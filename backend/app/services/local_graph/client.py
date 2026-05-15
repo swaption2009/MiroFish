@@ -15,7 +15,7 @@ Provides the same nested attribute interface::
     client.graph.set_ontology(graph_ids=..., entities=..., edges=...)
     client.graph.delete(graph_id=...)
 
-All data is stored as JSON in the Obsidian vault.
+All data is stored as JSON files on the local filesystem.
 Entity extraction is performed by the LLM (Gemini via OpenAI SDK).
 """
 
@@ -35,7 +35,7 @@ from .models import (
     GraphNode,
     GraphSearchResult,
 )
-from .obsidian_sync import ObsidianSync
+
 from .store import GraphStore
 
 logger = get_logger("mirofish.local_graph.client")
@@ -134,10 +134,9 @@ class _GraphService:
     Mirrors ``client.graph`` — the main interface for graph operations.
     """
 
-    def __init__(self, store: GraphStore, extractor: EntityExtractor, sync: ObsidianSync):
+    def __init__(self, store: GraphStore, extractor: EntityExtractor):
         self._store = store
         self._extractor = extractor
-        self._sync = sync
 
         # Sub-services
         self.node = _NodeService(store)
@@ -281,11 +280,6 @@ class _GraphService:
 
             result_episodes.append(episode)
 
-        # Sync to Obsidian after batch completes
-        try:
-            self._sync.sync_graph(graph_id)
-        except Exception as e:
-            logger.warning(f"Obsidian sync failed: {e}")
 
         return result_episodes
 
@@ -333,19 +327,18 @@ class LocalZepClient:
     Usage::
 
         from .local_graph import LocalZepClient
-        client = LocalZepClient(vault_path="/path/to/MiroFish-Vault")
+        client = LocalZepClient(data_dir="/path/to/graph-data")
         client.graph.create(graph_id="g1", name="My Graph")
     """
 
-    def __init__(self, vault_path: Optional[str] = None, **_kw: Any):
-        self.vault_path = vault_path or _default_vault_path()
-        self._store = GraphStore(self.vault_path)
+    def __init__(self, data_dir: Optional[str] = None, **_kw: Any):
+        self.data_dir = data_dir or _default_data_dir()
+        self._store = GraphStore(self.data_dir)
         self._extractor = EntityExtractor()
-        self._sync = ObsidianSync(self.vault_path, self._store)
 
-        self.graph = _GraphService(self._store, self._extractor, self._sync)
+        self.graph = _GraphService(self._store, self._extractor)
 
-        logger.info(f"LocalZepClient initialized — vault: {self.vault_path}")
+        logger.info(f"LocalZepClient initialized — data: {self.data_dir}")
 
 
 # ═══════════════════════════════════════════════════════════════════
@@ -353,14 +346,14 @@ class LocalZepClient:
 # ═══════════════════════════════════════════════════════════════════
 
 
-def _default_vault_path() -> str:
-    """Resolve the default vault path."""
-    configured = os.environ.get("OBSIDIAN_VAULT_PATH", "")
+def _default_data_dir() -> str:
+    """Resolve the default graph data directory."""
+    configured = os.environ.get("GRAPH_DATA_DIR", "")
     if configured:
         return configured
-    # Fall back to MiroFish-Vault inside the project root
+    # Fall back to backend/data/graphs inside the project root
     project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), "../../../.."))
-    return os.path.join(project_root, "MiroFish-Vault")
+    return os.path.join(project_root, "backend", "data", "graphs")
 
 
 def get_graph_client(api_key: Optional[str] = None) -> Any:
@@ -369,7 +362,7 @@ def get_graph_client(api_key: Optional[str] = None) -> Any:
     based on the ``GRAPH_BACKEND`` env variable.
 
     - ``GRAPH_BACKEND=zep`` → use Zep Cloud (original behaviour)
-    - ``GRAPH_BACKEND=local`` or unset → use local Obsidian vault
+    - ``GRAPH_BACKEND=local`` or unset → use local JSON file storage
     """
     backend = os.environ.get("GRAPH_BACKEND", "local").lower()
 

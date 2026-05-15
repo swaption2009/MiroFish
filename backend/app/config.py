@@ -35,12 +35,8 @@ class Config:
     # Zep配置
     ZEP_API_KEY = os.environ.get('ZEP_API_KEY')
     
-    # Graph backend: 'local' (Obsidian vault) or 'zep' (Zep Cloud)
+    # Graph backend: 'local' (JSON files) or 'zep' (Zep Cloud)
     GRAPH_BACKEND = os.environ.get('GRAPH_BACKEND', 'local')
-    OBSIDIAN_VAULT_PATH = os.environ.get(
-        'OBSIDIAN_VAULT_PATH',
-        os.path.join(os.path.dirname(__file__), '../../MiroFish-Vault')
-    )
     
     # 文件上传配置
     MAX_CONTENT_LENGTH = 50 * 1024 * 1024  # 50MB

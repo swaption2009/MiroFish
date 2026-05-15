@@ -1,8 +1,8 @@
 """
 JSON-based graph storage layer.
 
-Manages graph data as JSON files inside the Obsidian vault:
-  MiroFish-Vault/_data/graphs/{graph_id}/
+Manages graph data as JSON files on the local filesystem:
+  {data_dir}/{graph_id}/
     meta.json      — graph metadata + ontology
     nodes.json     — list of node dicts
     edges.json     — list of edge dicts
@@ -29,9 +29,8 @@ _lock = threading.Lock()
 class GraphStore:
     """Thread-safe, file-backed store for a single vault."""
 
-    def __init__(self, vault_path: str):
-        self.vault_path = vault_path
-        self._data_dir = os.path.join(vault_path, "_data", "graphs")
+    def __init__(self, data_dir: str):
+        self._data_dir = data_dir
         os.makedirs(self._data_dir, exist_ok=True)
 
     # ── helpers ──────────────────────────────────────────────────────

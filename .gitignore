@@ -59,9 +59,6 @@ backend/uploads/
 # Docker 数据
 data/
 
-# Obsidian Vault (track structure, ignore runtime data)
-MiroFish-Vault/_data/graphs/*/
-MiroFish-Vault/Graphs/
-MiroFish-Vault/.obsidian/workspace.json
-MiroFish-Vault/.obsidian/workspace-mobile.json
-MiroFish-Vault/.obsidian/graph.json
+# Local graph data
+backend/data/
+backend/MiroFish-Vault/
