@@ -21,21 +21,25 @@ from .models import GraphEdge, GraphNode
 logger = get_logger("mirofish.local_graph.entity_extractor")
 
 # System prompt for entity extraction
-_SYSTEM_PROMPT = """You are a precise knowledge-graph entity extractor.
-Given a text passage and an ontology definition, extract ALL entities and
-relationships mentioned in the text.
+_SYSTEM_PROMPT = """You are an advanced, highly aggressive knowledge-graph entity extractor.
+Your goal is to maximize recall by extracting ALL possible entities and relationships from the text, both explicit and implicit.
 
-Rules:
-1. Only extract entities whose type matches one of the ontology entity types.
-2. Only extract relationships whose type matches one of the ontology edge types.
-3. Each entity must have: name, type (from ontology), summary (1-2 sentences), attributes.
-4. Each relationship must have: source entity name, target entity name, type (from ontology), fact (natural-language description of the relationship).
-5. If an entity or relationship is mentioned multiple times, merge them (don't duplicate).
-6. Return ONLY valid JSON, no markdown fences or extra text.
+Rules for Robust Extraction:
+1. COMPREHENSIVENESS: Extract every distinct entity that fits the ontology. Do not leave any relevant entity behind. Scan aggressively.
+2. COREFERENCE RESOLUTION: Aggressively resolve pronouns (he, she, they, it) and aliases to their canonical entity names.
+3. IMPLICIT RELATIONSHIPS: Infer logical relationships even if not explicitly stated (e.g., if A is in B's team, and B is in C, infer A's relationship to C if applicable).
+4. ONTOLOGY STRICTNESS: Use ONLY the entity and edge types provided in the ontology. If no ontology is provided, infer appropriate types.
+5. RICH SUMMARIES: Provide detailed summaries and facts. Don't be brief.
+6. MERGING: If an entity is mentioned multiple times by different names/aliases, use the most complete name.
+7. Return ONLY valid JSON, no markdown fences or extra text.
 """
 
 
-def _build_extraction_prompt(text: str, ontology: Optional[Dict[str, Any]]) -> str:
+def _build_extraction_prompt(
+    text: str, 
+    ontology: Optional[Dict[str, Any]], 
+    existing_node_names: Optional[List[str]] = None
+) -> str:
     """Build the user prompt for entity extraction."""
     onto_section = ""
     if ontology:
@@ -58,11 +62,17 @@ def _build_extraction_prompt(text: str, ontology: Optional[Dict[str, Any]]) -> s
     else:
         onto_section = "No predefined ontology. Extract any entities and relationships you find.\n\n"
 
-    return f"""{onto_section}Text to analyze:
+    existing_section = ""
+    if existing_node_names:
+        existing_section = "Existing Entities in Knowledge Graph:\n" + ", ".join(existing_node_names) + "\n\nIf the text refers to any of these existing entities (even by pronoun or alias), use the exact existing entity name to ensure consistency and avoid duplicates.\n\n"
+
+    return f"""{onto_section}{existing_section}Text to analyze:
 \"\"\"
 {text}
 \"\"\"
 
+Analyze the text deeply. First, identify all actors, objects, and concepts. Resolve all pronouns.
+Then, extract as many meaningful relationships as possible among them.
 Return a JSON object with exactly this structure:
 {{
   "entities": [
@@ -111,9 +121,10 @@ class EntityExtractor:
         Returns (nodes, edges).  Edges reference nodes by uuid;
         if a node name matches an existing node the uuid is reused.
         """
-        prompt = _build_extraction_prompt(text, ontology)
+        existing_names = [n.name for n in existing_nodes] if existing_nodes else []
+        prompt = _build_extraction_prompt(text, ontology, existing_names)
 
-        max_attempts = 2
+        max_attempts = 3
         for attempt in range(max_attempts):
             try:
                 response = self.client.chat.completions.create(
@@ -123,7 +134,7 @@ class EntityExtractor:
                         {"role": "user", "content": prompt},
                     ],
                     response_format={"type": "json_object"},
-                    temperature=0.3,
+                    temperature=0.5,
                 )
                 content = response.choices[0].message.content or "{}"
                 parsed = self._parse_response(content)
