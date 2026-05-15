@@ -1,7 +1,10 @@
-"""Zep Graph 分页读取工具。
+"""Zep / Local Graph 分页读取工具。
 
-Zep 的 node/edge 列表接口使用 UUID cursor 分页，
-本模块封装自动翻页逻辑（含单页重试），对调用方透明地返回完整列表。
+支持两种后端：
+  - Zep Cloud: 使用 UUID cursor 分页 + 指数退避重试
+  - Local Graph (LocalZepClient): 直接返回所有节点/边（无需分页）
+
+对调用方透明地返回完整列表。
 """
 
 from __future__ import annotations
@@ -9,9 +12,6 @@ from __future__ import annotations
 import time
 from collections.abc import Callable
 from typing import Any
-
-from zep_cloud import InternalServerError
-from zep_cloud.client import Zep
 
 from .logger import get_logger
 
@@ -21,6 +21,11 @@ _DEFAULT_PAGE_SIZE = 100
 _MAX_NODES = 2000
 _DEFAULT_MAX_RETRIES = 3
 _DEFAULT_RETRY_DELAY = 2.0  # seconds, doubles each retry
+
+
+def _is_local_client(client: Any) -> bool:
+    """Check if the client is a LocalZepClient (avoid import at module level)."""
+    return type(client).__name__ == "LocalZepClient"
 
 
 def _fetch_page_with_retry(
@@ -38,10 +43,18 @@ def _fetch_page_with_retry(
     last_exception: Exception | None = None
     delay = retry_delay
 
+    # Build a set of retryable exception types
+    retryable = [ConnectionError, TimeoutError, OSError]
+    try:
+        from zep_cloud import InternalServerError
+        retryable.append(InternalServerError)
+    except ImportError:
+        pass
+
     for attempt in range(max_retries):
         try:
             return api_call(*args, **kwargs)
-        except (ConnectionError, TimeoutError, OSError, InternalServerError) as e:
+        except tuple(retryable) as e:
             last_exception = e
             if attempt < max_retries - 1:
                 logger.warning(
@@ -57,7 +70,7 @@ def _fetch_page_with_retry(
 
 
 def fetch_all_nodes(
-    client: Zep,
+    client: Any,
     graph_id: str,
     page_size: int = _DEFAULT_PAGE_SIZE,
     max_items: int = _MAX_NODES,
@@ -65,6 +78,10 @@ def fetch_all_nodes(
     retry_delay: float = _DEFAULT_RETRY_DELAY,
 ) -> list[Any]:
     """分页获取图谱节点，最多返回 max_items 条（默认 2000）。每页请求自带重试。"""
+    # Local backend returns all at once — no pagination needed
+    if _is_local_client(client):
+        return client.graph.node.get_by_graph_id(graph_id, limit=max_items)
+
     all_nodes: list[Any] = []
     cursor: str | None = None
     page_num = 0
@@ -103,13 +120,17 @@ def fetch_all_nodes(
 
 
 def fetch_all_edges(
-    client: Zep,
+    client: Any,
     graph_id: str,
     page_size: int = _DEFAULT_PAGE_SIZE,
     max_retries: int = _DEFAULT_MAX_RETRIES,
     retry_delay: float = _DEFAULT_RETRY_DELAY,
 ) -> list[Any]:
     """分页获取图谱所有边，返回完整列表。每页请求自带重试。"""
+    # Local backend returns all at once
+    if _is_local_client(client):
+        return client.graph.edge.get_by_graph_id(graph_id)
+
     all_edges: list[Any] = []
     cursor: str | None = None
     page_num = 0

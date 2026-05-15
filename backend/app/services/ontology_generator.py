@@ -414,6 +414,7 @@ class OntologyGenerator:
             '"""',
             '',
             'from pydantic import Field',
+            '# NOTE: This import is for Zep Cloud mode. For local mode, ontology is stored as JSON.',
             'from zep_cloud.external_clients.ontology import EntityModel, EntityText, EdgeModel',
             '',
             '',

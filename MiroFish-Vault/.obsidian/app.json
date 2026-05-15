@@ -1,0 +1,10 @@
+{
+  "vaultName": "MiroFish-Vault",
+  "livePreview": true,
+  "defaultViewMode": "preview",
+  "attachmentFolderPath": "_data",
+  "showUnsupportedFiles": false,
+  "showInlineTitle": true,
+  "showFrontmatter": true,
+  "theme": "obsidian"
+}
